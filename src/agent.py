@@ -1,10 +1,20 @@
+import os
 from typing import TypedDict
 
-from langgraph.graph import StateGraph, START, END
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, START, END
 
 from src.vectorstore import get_vectorstore
 
+
+# Load .env
+load_dotenv()
+
+
+# -----------------------------
+# State
+# -----------------------------
 
 class AgentState(TypedDict):
     question: str
@@ -12,11 +22,20 @@ class AgentState(TypedDict):
     answer: str
 
 
+# -----------------------------
+# LLM
+# -----------------------------
+
 llm = ChatOpenAI(
     model="gpt-4o-mini",
-    temperature=0
+    temperature=0,
+    api_key=os.getenv("OPENAI_API_KEY")
 )
 
+
+# -----------------------------
+# Retrieve documents
+# -----------------------------
 
 def retrieve(state: AgentState):
 
@@ -31,8 +50,8 @@ def retrieve(state: AgentState):
     )
 
     context = "\n\n".join(
-        doc.page_content
-        for doc in documents
+        document.page_content
+        for document in documents
     )
 
     return {
@@ -40,12 +59,16 @@ def retrieve(state: AgentState):
     }
 
 
+# -----------------------------
+# Generate answer
+# -----------------------------
+
 def generate_answer(state: AgentState):
 
     prompt = f"""
-You are a document research assistant.
+You are an AI company policy assistant.
 
-Use ONLY the following context.
+Answer the user's question using ONLY the context below.
 
 Context:
 {state["context"]}
@@ -53,10 +76,10 @@ Context:
 Question:
 {state["question"]}
 
-If the answer is not available,
+If the answer is not available in the context,
 say:
 
-"I could not find this information in the document."
+"I could not find this information in the company policy."
 
 Answer:
 """
@@ -68,15 +91,40 @@ Answer:
     }
 
 
+# -----------------------------
+# Create LangGraph Agent
+# -----------------------------
+
 def create_agent():
 
     graph = StateGraph(AgentState)
 
-    graph.add_node("retrieve", retrieve)
-    graph.add_node("generate", generate_answer)
+    # Add nodes
+    graph.add_node(
+        "retrieve",
+        retrieve
+    )
 
-    graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "generate")
-    graph.add_edge("generate", END)
+    graph.add_node(
+        "generate",
+        generate_answer
+    )
 
+    # Workflow
+    graph.add_edge(
+        START,
+        "retrieve"
+    )
+
+    graph.add_edge(
+        "retrieve",
+        "generate"
+    )
+
+    graph.add_edge(
+        "generate",
+        END
+    )
+
+    # Compile
     return graph.compile()
